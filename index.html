@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Every Tree in NYC</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.13.0/mapbox-gl.css" rel="stylesheet">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.13.0/mapbox-gl.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+            font-size: 16px;
+        }
+
+        #mapWrap {
+            position: absolute;
+            overflow: hidden;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #mapTitle {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            -webkit-transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%);
+            width: 400px;
+            text-shadow: 1px 1px 2px rgba(255, 255, 255, 1), -1px -1px 2px rgba(255, 255, 255, 1);
+            line-height: 1.5em;
+            color: #333;
+        }
+
+        #mapInset {
+            position: absolute;
+            z-index: 20;
+            bottom: 0;
+            right: 0;
+            width: 300px;
+            height: 300px;
+            transition: opacity 1s ease-in-out;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #mapTitle img {
+            width: 100%;
+        }
+
+        #mapTitle a {
+            color: #333;
+        }
+
+        #mapBg {
+            position: absolute;
+            background-image: radial-gradient(rgba(255, 255, 255, 1) 10%, rgba(255, 255, 255, 0) 40%);
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        #mapLoader {
+            position: absolute;
+            background: #fff;
+            pointer-events: none;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            transition: opacity 1s ease-in-out;
+        }
+
+        .loader {
+            position: fixed;
+            width: 35px;
+            height: 35px;
+            border: 3px solid #d3d3d3;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+            top: 50%;
+            left: 50%;
+            -webkit-transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%);
+        }
+
+        @keyframes rotation {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        svg {
+            overflow: hidden;
+        }
+
+        .shadow {
+            -webkit-filter: drop-shadow( 2px 2px 4px rgba(0, 0, 0, .2));
+            filter: drop-shadow( 2px 2px 4px rgba(0, 0, 0, .2));
+        }
+
+        @media (max-width: 700px) {
+            #mapBg {
+                background-image: radial-gradient(rgba(255, 255, 255, 1) 10%, rgba(255, 255, 255, 0) 60%);
+            }
+
+            #mapTitle {
+                width:300px;
+            }
+
+            #mapInset {
+                right: -35px;
+                overflow: hidden;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="mapWrap">
+        <div id="mapBg">
+            <div id="mapLoader">
+                <span class="loader"></span>
+            </div>
+            <div id="mapTitle">
+                <img src="everytree.svg" alt="Title of map: Every Tree in New York">
+                <p>Nature <a href="https://www.nature.com/articles/s41597-023-02000-w" alt="Nature's published article" target="_blank">recently published a dataset</a> (Feb. 2023)    
+                    containing detailed information on six million trees across NYC. Scroll and zoom for your viewing
+                    pleasure.</p>
+                <p>By: <a href="https://www.formerspatial.com/" alt="William Davis' personal site" target="_blank">William Davis</a></p>
+            </div>
+        </div>
+        <div id="mapInset"></div>
+        <div id="map"></div>
+    </div>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+    <script>
+
+        const startCenter = [-73.91, 40.82];
+        const endCenter = [-73.97, 40.57];
+        const maxBounds = [-74.494002, 40.428622, -73.553298, 40.966904];
+
+        const width = 300;
+        const height = 300;
+
+        const projection = d3.geoMercator()
+            .scale(25000)
+            .translate([width / 2, height / 2]);
+
+        const path = d3.geoPath().projection(projection);
+
+        const svg = d3.select("#mapInset").append("svg")
+            .attr('class', 'shadow')
+            .attr("width", width)
+            .attr("height", height);
+        
+        mapboxgl.accessToken = 'pk.eyJ1Ijoid2lsbGlhbS1kYXZpcyIsImEiOiJja2tiYWtvbWcwMmtzMnBvajh3M2kxZGRuIn0.GeROaHKn2Gbvsg1e8buJEw';
+        const map = new mapboxgl.Map({
+            container: 'map', // container ID
+            style: 'mapbox://styles/william-davis/clf5m34po006l01pasiq3b6a7', // style URL
+            center: startCenter, // starting position [lng, lat]
+            zoom: 13, // starting zoom
+            maxZoom: 14.5,
+            pitch: 40,
+            minZoom: 12,
+            maxBounds: maxBounds
+        });
+
+        d3.json('./data/borough.json')
+            .then((boroughs) => {
+                map.easeTo({
+                    center: endCenter,
+                    duration: 200000
+                });
+
+                const center = d3.geoCentroid(boroughs);
+                projection.center(center);
+
+                svg
+                    .append('g')
+                    .selectAll("path")
+                    .data(boroughs.features)
+                    .enter()
+                    .append("path")
+                    .attr('class', 'counties')
+                    .attr('d', path)
+                    .attr('fill', '#fff')
+                    .attr('stroke', '#d3d3d3')
+                    .attr('stroke-width', 0.5)
+
+                const mask = turf.mask(boroughs);
+                return mask;
+            })
+            .then((mask) => {
+                const innerWidth = window.innerWidth
+                map.on('load', () => {
+                    map.on('move', () => {
+                        const boundsData = getInsetBounds();
+                        svg.selectAll('#boundsShape').remove();
+                        svg
+                            .append('g')
+                            .attr('id', 'boundsShape')
+                            .selectAll("path")
+                            .data(boundsData.features)
+                            .enter()
+                            .append("path")
+                            .attr('d', path)
+                            .attr('fill', 'none')
+                            .attr('stroke', '#555')
+                            .attr('stroke-width', 1)
+                    });
+
+                    map.addSource('mask', {
+                        'type': 'geojson',
+                        'data': mask
+                    });
+
+                    map.addLayer({
+                        'id': 'mask-layer',
+                        'type': 'fill',
+                        'source': 'mask', // reference the data source
+                        'layout': {},
+                        'paint': {
+                            'fill-color': '#ecf4f9', // blue color fill
+                            'fill-opacity': 0.5
+                        }
+                    },
+                    'water-border');
+                    
+                    document.getElementById('mapLoader').style.opacity = 0;
+                    
+                    if (innerWidth > 700) {
+                        document.getElementById('mapInset').style.opacity = 1;
+                    }
+
+                    let initClick = true;
+                    document.getElementById('mapBg').addEventListener('click', () => {
+                        document.getElementById('mapBg').style.opacity = 0;
+                        document.getElementById('mapBg').style.pointerEvents = 'none';
+                        if (innerWidth <= 700) {
+                            document.getElementById('mapInset').style.opacity = 1;
+                        }
+                        if (initClick) {
+                            map.addControl(new mapboxgl.NavigationControl());
+                            initClick = false;
+                        }
+                        map.easeTo({
+                            pitch: 0
+                        })
+                    });
+
+                    map.on('click', () => {
+                        if (innerWidth <= 700) {
+                            document.getElementById('mapInset').style.opacity = 0;
+                        }
+                        document.getElementById('mapBg').style.opacity = 1;
+                        document.getElementById('mapBg').style.pointerEvents = 'inherit';
+                        map.easeTo({
+                            pitch: 40
+                        })
+                    })
+                });
+            })
+            .catch((error) => {
+                console.error(error);
+            });
+
+        function getInsetBounds() {
+            let bounds = map.getBounds();
+            let boundsJson = {
+                "type": "FeatureCollection",
+                "features": [{
+                    "type": "Feature",
+                    "properties": {},
+                    "geometry": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [
+                                [
+                                    bounds._sw.lng,
+                                    bounds._sw.lat
+                                ],
+                                [
+                                    bounds._ne.lng,
+                                    bounds._sw.lat
+                                ],
+                                [
+                                    bounds._ne.lng,
+                                    bounds._ne.lat
+                                ],
+                                [
+                                    bounds._sw.lng,
+                                    bounds._ne.lat
+                                ],
+                                [
+                                    bounds._sw.lng,
+                                    bounds._sw.lat
+                                ]
+                            ]
+                        ]
+                    }
+                }]
+            }
+            return boundsJson
+        }
+    </script>
+
+</body>
+
+</html>
